@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.app.name }}
+  namespace: {{ .Values.app.team_namespace }}
+  labels:
+    app: {{ .Values.app.name }}
+    team: {{ .Values.app.team_namespace }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Values.app.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.app.name }}
+        team: {{ .Values.app.team_namespace }}
+    spec:
+      # Links the pod to the IAM Role created in external-secret.yaml
+      serviceAccountName: {{ .Values.app.name }}-sa
+      containers:
+        - name: {{ .Values.app.name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.service.port }}
+          env:
+            # 1. Discover the Node IP where this pod is running
+            - name: NODE_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            # 2. Route traces directly to the local Alloy DaemonSet
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://$(NODE_IP):4318"
+            - name: OTEL_SERVICE_NAME
+              value: {{ .Values.app.name }}
+            - name: ENVIRONMENT
+              value: {{ .Values.app.environment }}
+          envFrom:
+            # 3. Mount all secrets securely fetched by External Secrets
+            - secretRef:
+                name: {{ .Values.app.name }}-aws-secrets
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
